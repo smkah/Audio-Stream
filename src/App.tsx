@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Mic, Headphones, Radio, MicOff, Volume2, VolumeX, Terminal, Info } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { io, Socket } from "socket.io-client";
 
 export default function App() {
   const [role, setRole] = useState<"broadcaster" | "listener" | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [logs, setLogs] = useState<string[]>(["System initialized."]);
   
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -16,36 +17,35 @@ export default function App() {
     setLogs(prev => [...prev.slice(-19), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
-  useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws`;
-    
-    addLog(`Attempting to connect to: ${wsUrl}`);
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+  const roleRef = useRef(role);
+  const isStreamingRef = useRef(isStreaming);
 
-    ws.onopen = () => addLog("Connected to signaling server.");
-    ws.onclose = () => addLog("Disconnected from server.");
-    ws.onerror = (event) => {
-      console.error("WebSocket error event:", event);
-      addLog(`WebSocket error occurred (ReadyState: ${ws.readyState}). Check console for details.`);
-    };
+  useEffect(() => {
+    roleRef.current = role;
+    isStreamingRef.current = isStreaming;
+  }, [role, isStreaming]);
+
+  useEffect(() => {
+    const socket = io(); // Connects to the same host
+    socketRef.current = socket;
+
+    socket.on("connect", () => addLog("Connected to signaling server."));
+    socket.on("disconnect", () => addLog("Disconnected from server."));
+    socket.on("connect_error", (err) => {
+      console.error("Socket error:", err);
+      addLog(`Socket error: ${err.message}`);
+    });
     
-    ws.onmessage = async (event) => {
-      if (role === "listener" && isStreaming) {
-        if (event.data instanceof Blob) {
-          const buffer = await event.data.arrayBuffer();
-          playAudioChunk(buffer);
-        }
+    socket.on("audio", (data: ArrayBuffer) => {
+      if (roleRef.current === "listener" && isStreamingRef.current) {
+        playAudioChunk(data);
       }
-    };
+    });
 
     return () => {
-      ws.close();
-      stopStreaming();
+      socket.disconnect();
     };
-  }, [role, isStreaming]);
+  }, []); // Run only once on mount
 
   const playAudioChunk = async (arrayBuffer: ArrayBuffer) => {
     if (!audioContextRef.current) {
@@ -80,19 +80,19 @@ export default function App() {
         const ctx = audioContextRef.current;
         const source = ctx.createMediaStreamSource(stream);
         
-        // Simple script processor for chunking (deprecated but easiest for this demo without worker complexity)
+        // Simple script processor for chunking
         const processor = ctx.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
         
         processor.onaudioprocess = (e) => {
           const inputData = e.inputBuffer.getChannelData(0);
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(inputData.buffer);
+          if (socketRef.current?.connected) {
+            socketRef.current.emit("audio", inputData.buffer);
           }
         };
 
         source.connect(processor);
-        processor.connect(ctx.destination); // Required to trigger onaudioprocess
+        processor.connect(ctx.destination);
         
         setIsStreaming(true);
         addLog("Broadcasting started.");
@@ -275,17 +275,8 @@ export default function App() {
               <div className="animate-pulse bg-green-500/50 w-2 h-4 inline-block ml-1"></div>
             </div>
           </section>
-
         </main>
-
-        <footer className="pt-8 text-center border-t border-slate-900">
-          <p className="text-slate-600 text-xs">
-            Inspired by <strong>Rust Audio TCP Stream</strong>. 
-            Implementation uses Web Audio API & WebSockets.
-          </p>
-        </footer>
       </div>
     </div>
   );
 }
-

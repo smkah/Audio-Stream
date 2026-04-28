@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { WebSocketServer, WebSocket } from "ws";
+import { Server } from "socket.io";
 import { createServer } from "http";
 
 async function startServer() {
@@ -9,35 +9,19 @@ async function startServer() {
   const PORT = 3000;
   const httpServer = createServer(app);
 
-  // WebSocket Server setup
-  const wss = new WebSocketServer({ noServer: true });
+  // Socket.IO Server setup
+  const io = new Server(httpServer);
 
-  httpServer.on("upgrade", (request, socket, head) => {
-    console.log("Upgrade request received. URL:", request.url);
-    if (request.url === "/ws") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
-    } else {
-      console.log("Path not matched for upgrade:", request.url);
-      socket.destroy();
-    }
-  });
+  io.on("connection", (socket) => {
+    console.log("Client connected:", socket.id);
 
-  wss.on("connection", (ws, req) => {
-    console.log("Client connected. URL:", req.url);
-
-    ws.on("message", (data, isBinary) => {
+    socket.on("audio", (data) => {
       // Broadcast binary audio data to all other clients
-      wss.clients.forEach((client) => {
-        if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(data, { binary: isBinary });
-        }
-      });
+      socket.broadcast.emit("audio", data);
     });
 
-    ws.on("close", () => {
-      console.log("Client disconnected");
+    socket.on("disconnect", () => {
+      console.log("Client disconnected:", socket.id);
     });
   });
 
