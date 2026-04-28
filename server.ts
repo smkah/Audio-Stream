@@ -14,10 +14,14 @@ async function startServer() {
 
   httpServer.on("upgrade", (request, socket, head) => {
     console.log("Upgrade request received. URL:", request.url);
-    // Attempt to handle all upgrade requests that look like WebSockets
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit("connection", ws, request);
-    });
+    if (request.url === "/ws") {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } else {
+      console.log("Path not matched for upgrade:", request.url);
+      socket.destroy();
+    }
   });
 
   wss.on("connection", (ws, req) => {
@@ -59,6 +63,7 @@ async function startServer() {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`NODE_ENV is: ${process.env.NODE_ENV}`);
   });
 }
 
