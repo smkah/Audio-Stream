@@ -1,0 +1,6 @@
+{
+  "name": "Rust Audio TCP Stream (Web Version)",
+  "description": "A web-based audio streaming application inspired by a Rust TCP audio stream project. Features real-time audio capturing and broadcasting via WebSockets.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["audio_processing", "realtime_communication"]
+}
