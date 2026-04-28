@@ -26,7 +26,7 @@ export default function App() {
   }, [role, isStreaming]);
 
   useEffect(() => {
-    const socket = io(); // Connects to the same host
+    const socket = io({ transports: ["websocket"] }); // Connects to the same host
     socketRef.current = socket;
 
     socket.on("connect", () => addLog("Connected to signaling server."));
